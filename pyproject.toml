@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bliq"
+version = "0.0.1"
+description = "Generative Search Engine"
+requires-python = ">=3.10"
+dependencies = [
+    # core
+    "torch>=2.2.1",
+    "transformers>=4.38.0",
+    "accelerate>=0.28.0",
+    "peft>=0.10.0",
+    "datasets>=2.18.0",
+    "sentence-transformers>=2.6.0",
+    "faiss-gpu>=1.7.2",
+    "llama-index-core>=0.10.12",
+    # crawling
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.1.0",
+    # tools
+    "tqdm>=4.65.0",
+]
+
+[tool.mypy]
+
+[[tool.mypy.overrides]]
+module = "transformers.*,sentence_transformers.*,faiss.*,datasets.*"
+ignore_missing_imports = true

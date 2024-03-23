@@ -73,11 +73,16 @@ RUN pyenv install $PYTHON_VERSION \
 
 RUN pip install wheel
 
+# install dependencies from pyproject.toml
+RUN mkdir /tmp/app
+COPY pyproject.toml /tmp/app/
+WORKDIR /tmp/app
+RUN pip install .
 
-RUN pip install torch
-RUN pip install transformers accelerate datasets
-RUN pip install einops
-
+# RUN pip install torch
+# RUN pip install transformers accelerate datasets
+# RUN pip install einops
+# RUN pip install llama-index-core
 
 RUN mkdir -p /root/.cache
 
@@ -89,6 +94,6 @@ RUN echo 'export PATH=/usr/local/cuda/bin:${PATH}' >> /root/.bashrc
 FROM build-base AS build-dev
 
 RUN pip install fairscale multimethod
-RUN pip install pytest ipython mypy black
+RUN pip install pytest ipython mypy black isort
 
 CMD ["echo", "Explore!"]

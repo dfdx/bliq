@@ -2,8 +2,8 @@ from typing import Iterable
 
 from transformers import (
     AutoModelForCausalLM,
-    PreTrainedModel,
     AutoTokenizer,
+    PreTrainedModel,
     PreTrainedTokenizer,
     pipeline,
 )
