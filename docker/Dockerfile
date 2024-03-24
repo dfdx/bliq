@@ -55,8 +55,11 @@ RUN apt update && apt install -y --no-install-recommends \
 ## System packages
 
 RUN apt-get update
-RUN apt-get -y install python3 python3-pip python-is-python3
-RUN apt install -y jq
+RUN apt-get install -y sudo
+RUN echo "${user} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+RUN apt-get install -y git openssh-server
+RUN apt-get install -y python3 python3-pip python-is-python3
+RUN apt-get install -y jq
 RUN pip install yq==3.1.1
 
 
