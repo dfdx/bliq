@@ -14,7 +14,10 @@
 	// can't work on a host with CUDA driver but no CUDA devices?
 	// https://github.com/NVIDIA/nvidia-docker/issues/653
 
-	"runArgs": ["--gpus", "all"]
+	"runArgs": [
+		"--gpus", "all",
+		"--network", "host"
+	]
 
 	// "containerEnv": {
 	// 	"NVIDIA_VISIBLE_DEVICES": "void"
