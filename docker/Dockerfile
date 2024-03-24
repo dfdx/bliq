@@ -3,30 +3,16 @@
 FROM nvidia/cuda:12.3.2-cudnn9-devel-ubuntu22.04 AS build-base
 
 
+## Basic system setup
 
+ENV user=devpod
 SHELL ["/bin/bash", "-c"]
 
-RUN apt-get update
-# RUN apt-get -y install python3 python3-pip git
-
-ENV HOME=/root
-ENV PYENV_ROOT="${HOME}/.pyenv"
-ENV BASHRC=/root/.bashrc
-
-ENV PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:${PATH}"
-
-COPY pyenv.tar.gz /pyenv.tar.gz
-RUN mkdir -p $PYENV_ROOT && cd $PYENV_ROOT && tar xvzf /pyenv.tar.gz \
-    && echo 'export PATH="$HOME/.pyenv/bin:$PATH"' >> $BASHRC \
-    && echo 'eval "$(pyenv init --path)"' >> $BASHRC \
-    && echo 'eval "$(pyenv virtualenv-init -)"' >> $BASHRC \
-    && source $BASHRC
-
-
-ENV PYTHON_VERSION=3.10.6
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TERM=linux
+
+ENV TERM=xterm-color
 
 ENV LANGUAGE=en_US.UTF-8 \
     LANG=en_US.UTF-8 \
@@ -65,35 +51,51 @@ RUN apt update && apt install -y --no-install-recommends \
     && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
     && apt clean
 
-RUN pyenv install $PYTHON_VERSION \
-    && pyenv global $PYTHON_VERSION \
-    && rm -rf /tmp/*
+
+## System packages
+
+RUN apt-get update
+RUN apt-get -y install python3 python3-pip python-is-python3
+RUN apt install -y jq
+RUN pip install yq==3.1.1
 
 
+# Add user
+
+RUN useradd -ms /bin/bash ${user}
+RUN usermod -aG sudo ${user}
+
+USER ${user}
+WORKDIR /home/${user}
+
+
+## Python packages
 
 RUN pip install wheel
 
+## set up other system software
+# COPY docker/setup.sh .
+# RUN bash setup.sh
+
 # install dependencies from pyproject.toml
-RUN mkdir /tmp/app
-COPY pyproject.toml /tmp/app/
-WORKDIR /tmp/app
-RUN pip install .
 
-# RUN pip install torch
-# RUN pip install transformers accelerate datasets
-# RUN pip install einops
-# RUN pip install llama-index-core
 
-RUN mkdir -p /root/.cache
+COPY pyproject.toml .
+RUN tomlq -r ".project.dependencies[]" pyproject.toml > requirements.txt
+RUN pip install --no-cache-dir --upgrade -r requirements.txt
+
+
+RUN mkdir -p ${HOME}/.cache
+RUN echo 'export PATH=${PATH}:${HOME}/.local/bin' >> ${HOME}/.bashrc
 
 # ensure libraries see CUDA
-RUN echo 'export LD_LIBRARY_PATH=/usr/local/cuda-11/lib64:/usr/lib/x86_64-linux-gnu/:${LD_LIBRARY_PATH}' >> /root/.bashrc
-RUN echo 'export PATH=/usr/local/cuda/bin:${PATH}' >> /root/.bashrc
+RUN echo 'export LD_LIBRARY_PATH=/usr/local/cuda-11/lib64:/usr/lib/x86_64-linux-gnu/:${LD_LIBRARY_PATH}' >> ${HOME}/.bashrc
+RUN echo 'export PATH=/usr/local/cuda/bin:${PATH}' >> ${HOME}/.bashrc
 
 
 FROM build-base AS build-dev
 
-RUN pip install fairscale multimethod
+# RUN apt install -y git openssh-server
 RUN pip install pytest ipython mypy black isort
 
 CMD ["echo", "Explore!"]
