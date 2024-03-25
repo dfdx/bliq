@@ -1,4 +1,4 @@
-# bliq
+# kava
 Generative search engine
 
 

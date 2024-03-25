@@ -2,7 +2,7 @@ from typing import Generator
 
 import torch
 
-from bliq.llm import LLM
+from kava.llm import LLM
 
 MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2"
 

@@ -33,15 +33,16 @@ the in the psql:
 
 ```sql
 -- change values for production
-\set username bliq
-\set password bliq
-\set dbname bliq
+\set username kava
+\set password kava
+\set dbname kava
 
 CREATE USER :username WITH PASSWORD :'password';
 CREATE DATABASE :dbname;
 GRANT ALL PRIVILEGES ON DATABASE :dbname TO :username;
 
 \c :dbname
+
 CREATE EXTENSION vector;
 
 -- exit psql
@@ -50,7 +51,7 @@ CREATE EXTENSION vector;
 5. Check that you can connect to the databsase from the shell:
 
 ```shell
-psql -W -U bliq -h 127.0.0.1 bliq
+psql -W -U kava -h 127.0.0.1 kava
 # enter the password specified above
 ```
 

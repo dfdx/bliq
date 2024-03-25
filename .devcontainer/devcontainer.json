@@ -17,11 +17,15 @@
 	"runArgs": [
 		"--gpus", "all",
 		"--network", "host"
-	]
+	],
 
-	// "containerEnv": {
-	// 	"NVIDIA_VISIBLE_DEVICES": "void"
-	// }
+	"containerEnv": {
+		// "NVIDIA_VISIBLE_DEVICES": "void",
+		"PGHOST": "127.0.0.1",
+		"PGDBNAME": "kava",
+		"PGUSER": "kava",
+		"PGPASSWORD": "kava"
+	}
 
 
 }

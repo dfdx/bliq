@@ -1,12 +1,12 @@
-from typing import List
-from urllib.parse import urljoin, urlparse
+import asyncio
+import logging
 import multiprocessing as mp
 import multiprocessing.queues as queues
-import logging
-import asyncio
-import httpx
-import bs4
+from typing import List
+from urllib.parse import urljoin, urlparse
 
+import bs4
+import httpx
 
 # async def fetch(client: httpx.AsyncClient, outq: mp.Queue, url: str, params: dict = None):
 #     params = params or {}
@@ -57,9 +57,18 @@ def download_job(inq: queues.Queue, outq: queues.Queue, **kwargs):
 
 
 def crawl(start_urls: List[str], **kwargs):
-    inq = mp.Queue()     # queue of dicts with args to AsyncClient.build_request()
-    outq = mp.Queue()    # queue of httpx.Response
-    p = mp.Process(target=download_job, args=(inq, outq,), kwargs=kwargs)
+    inq: queues.Queue = (
+        mp.Queue()
+    )  # queue of dicts with args to AsyncClient.build_request()
+    outq: queues.Queue = mp.Queue()  # queue of httpx.Response
+    p = mp.Process(
+        target=download_job,
+        args=(
+            inq,
+            outq,
+        ),
+        kwargs=kwargs,
+    )
     p.start()
     # TODO: deduplicate
     # TODO: implement create_download_job()
@@ -80,7 +89,6 @@ def crawl(start_urls: List[str], **kwargs):
                 inq.put({"method": "GET", "url": path})
         yield html
     p.terminate()
-
 
 
 def main():
