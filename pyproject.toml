@@ -33,5 +33,5 @@ dependencies = [
 [tool.mypy]
 
 [[tool.mypy.overrides]]
-module = "transformers.*,sentence_transformers.*,faiss.*,datasets.*"
+module = "transformers.*,sentence_transformers.*,faiss.*,datasets.*,pgvector.psycopg.*"
 ignore_missing_imports = true

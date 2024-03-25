@@ -1,16 +1,15 @@
 import os
-from typing import List
 from collections import OrderedDict
+from typing import List
 
 import numpy as np
 import psycopg
-from psycopg.types.json import Jsonb
-from psycopg.rows import dict_row
-from pgvector.psycopg import register_vector
-from sentence_transformers import SentenceTransformer
 from llama_index.core.schema import TextNode
+from pgvector.psycopg import register_vector
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
-
 
 DEFAULT_EMBEDDER_MODEL_ID = "all-MiniLM-L6-v2"
 
@@ -19,16 +18,16 @@ def getenv_or_raise(name: str):
     value = os.getenv(name)
     if not value:
         raise ValueError(
-            f"Attemping to load connection info from environment, " +
-            f"but {name} variable is not set")
+            f"Attemping to load connection info from environment, "
+            + f"but {name} variable is not set"
+        )
     else:
         return value
 
+
 def connection_string_from_env():
     names = ("PGHOST", "PGDBNAME", "PGUSER", "PGPASSWORD")
-    host, dbname, user, password = [
-        getenv_or_raise(name) for name in names
-    ]
+    host, dbname, user, password = [getenv_or_raise(name) for name in names]
     return f"host={host} dbname={dbname} user={user} password={password}"
 
 
@@ -38,16 +37,23 @@ class PGStore:
     """
 
     # map from TextNode fields to table columns
-    attr2col = OrderedDict({
-        "id_": "id",
-        "text": "text",
-        "embedding": "embedding",
-        "metadata": "metadata",
-        "start_char_idx": "start_char_idx",
-        "end_char_idx": "end_char_idx"
-    })
+    attr2col = OrderedDict(
+        {
+            "id_": "id",
+            "text": "text",
+            "embedding": "embedding",
+            "metadata": "metadata",
+            "start_char_idx": "start_char_idx",
+            "end_char_idx": "end_char_idx",
+        }
+    )
 
-    def __init__(self, table: str, embedder: SentenceTransformer | str = DEFAULT_EMBEDDER_MODEL_ID, conn_info=None):
+    def __init__(
+        self,
+        table: str,
+        embedder: SentenceTransformer | str = DEFAULT_EMBEDDER_MODEL_ID,
+        conn_info=None,
+    ):
         if isinstance(embedder, str):
             embedder = SentenceTransformer(embedder)
         self.embedder = embedder or SentenceTransformer(DEFAULT_EMBEDDER_MODEL_ID)
@@ -74,7 +80,6 @@ class PGStore:
         )
         self.conn.commit()
 
-
     def add(self, nodes: List[TextNode]):
         self.ensure_initialized()
         for node in nodes:
@@ -86,11 +91,20 @@ class PGStore:
             (%s, %s, %s, %s, %s, %s)
         """
         for node in nodes:
-            self.conn.execute(sql, (node.id_, node.text, node.embedding, Jsonb(node.metadata), node.start_char_idx, node.end_char_idx))
+            self.conn.execute(
+                sql,
+                (
+                    node.id_,
+                    node.text,
+                    node.embedding,
+                    Jsonb(node.metadata),
+                    node.start_char_idx,
+                    node.end_char_idx,
+                ),
+            )
         self.conn.commit()
 
-
-    def _find(self, embedding: np.array, limit: int = 10):
+    def _find(self, embedding: np.ndarray, limit: int = 10):
         self.ensure_initialized()
         with self.conn.cursor() as cur:
             cur.execute(
@@ -103,13 +117,14 @@ class PGStore:
             records = cur.fetchall()
         nodes = []
         for rec in records:
+            # note: fields don't map 1:1
             node = TextNode(
                 id_=str(rec["id"]),
                 text=rec["text"],
                 embedding=rec["embedding"].tolist(),
-                metadata=rec["metadata"],
+                extra_info=rec["metadata"],
                 start_char_idx=rec["start_char_idx"],
-                end_char_idx=rec["end_char_idx"]
+                end_char_idx=rec["end_char_idx"],
             )
             nodes.append(node)
         return nodes
@@ -117,7 +132,6 @@ class PGStore:
     def find(self, question: str, limit: int = 10):
         embedding = self.embedder.encode(question)
         return self._find(embedding, limit=limit)
-
 
 
 def main():
@@ -129,4 +143,3 @@ def main():
         print(node.text)
 
     nodes = [TextNode(text=piece) for piece in TEXT.split(".")]
-
