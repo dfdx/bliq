@@ -60,6 +60,13 @@ RUN apt-get install -y python3 python3-pip python-is-python3
 RUN apt-get install -y jq
 RUN pip install yq==3.1.1
 
+## Install PostgreSQL client
+
+RUN apt install -y postgresql-common
+RUN /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+
+RUN apt update
+RUN apt install -y postgresql postgresql-14-pgvector
 
 ## Add user & enable sudo
 
@@ -82,14 +89,6 @@ COPY pyproject.toml .
 RUN tomlq -r ".project.dependencies[]" pyproject.toml > requirements.txt
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
-
-# PostgreSQL
-
-RUN sudo apt install -y postgresql-common
-RUN sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-
-RUN sudo apt update
-RUN sudo apt install -y postgresql postgresql-14-pgvector
 
 ## Post-install setup
 

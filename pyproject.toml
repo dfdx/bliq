@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bliq"
+name = "kava"
 version = "0.0.1"
 description = "Generative Search Engine"
 requires-python = ">=3.10"
@@ -17,9 +17,15 @@ dependencies = [
     "sentence-transformers>=2.6.0",
     "faiss-gpu>=1.7.2",
     "llama-index-core>=0.10.12",
+
+    # store
+    "psycopg>=3.1.18",
+    "pgvector>=0.2.5",
+
     # crawling
     "beautifulsoup4>=4.12.3",
     "lxml>=5.1.0",
+
     # tools
     "tqdm>=4.65.0",
 ]
@@ -27,5 +33,5 @@ dependencies = [
 [tool.mypy]
 
 [[tool.mypy.overrides]]
-module = "transformers.*,sentence_transformers.*,faiss.*,datasets.*"
+module = "transformers.*,sentence_transformers.*,faiss.*,datasets.*,pgvector.psycopg.*"
 ignore_missing_imports = true
