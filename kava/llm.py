@@ -40,7 +40,9 @@ class LLM:
     def from_pretrained(model_id: str, **kwargs):
         model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
-        tokenizer.pad_token_id = tokenizer.pad_token_id or tokenizer.eos_token_id
+        if tokenizer.pad_token is None:
+            tokenizer.add_special_tokens({"pad_token": "<pad>"})
+            model.resize_token_embeddings(len(tokenizer))
         return LLM(model=model, tokenizer=tokenizer)
 
     def generate(self, texts: str | Iterable[str], **kwargs):

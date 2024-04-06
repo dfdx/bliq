@@ -2,26 +2,32 @@ import asyncio
 import logging
 import multiprocessing as mp
 import multiprocessing.queues as queues
+from dataclasses import dataclass
 from typing import List
 from urllib.parse import urljoin, urlparse
 
 import bs4
 import httpx
 
-# async def fetch(client: httpx.AsyncClient, outq: mp.Queue, url: str, params: dict = None):
-#     params = params or {}
-
 logger = logging.getLogger(__name__)
 
 
-async def download_job_coro(inq: queues.Queue, outq: queues.Queue, rate_limit=None):
-    async with httpx.AsyncClient() as client:
+async def download_job_coro(
+    inq: queues.Queue, outq: queues.Queue, rate_limit=None, retries=3
+):
+    transport = httpx.AsyncHTTPTransport(retries=retries)
+    async with httpx.AsyncClient(transport=transport, follow_redirects=True) as client:
         while True:
             req_dict = inq.get()
             req = client.build_request(**req_dict)
             logger.debug(f"Requesting {req.url}")
-            resp = await client.send(req)
-            outq.put(resp)
+            try:
+                resp = await client.send(req)
+                outq.put(resp)
+            except Exception as e:
+                # return pseudo response
+                resp = httpx.Response(status_code=500, text=str(e))
+                outq.put(resp)
             if rate_limit:
                 await asyncio.sleep(1 / rate_limit)
 
@@ -56,11 +62,11 @@ def download_job(inq: queues.Queue, outq: queues.Queue, **kwargs):
     asyncio.run(download_job_coro(inq, outq, **kwargs))
 
 
-def crawl(start_urls: List[str], **kwargs):
-    inq: queues.Queue = (
-        mp.Queue()
-    )  # queue of dicts with args to AsyncClient.build_request()
-    outq: queues.Queue = mp.Queue()  # queue of httpx.Response
+def create_download_job(**kwargs):
+    # queue of dicts with args to AsyncClient.build_request()
+    inq: queues.Queue = mp.Queue()
+    # queue of httpx.Response
+    outq: queues.Queue = mp.Queue()
     p = mp.Process(
         target=download_job,
         args=(
@@ -69,33 +75,54 @@ def crawl(start_urls: List[str], **kwargs):
         ),
         kwargs=kwargs,
     )
+    return p, inq, outq
+
+
+CRAWLING_PROCESSES = []
+
+
+@dataclass
+class WebPage:
+    url: str
+    html: str
+
+
+def crawl(start_urls: List[str], **kwargs):
+    p, inq, outq = create_download_job(**kwargs)
+    global CRAWLING_PROCESSES
+    CRAWLING_PROCESSES.append((p, inq, outq))
     p.start()
-    # TODO: deduplicate
-    # TODO: implement create_download_job()
+    submitted_urls: set[str] = set([])
     for url in start_urls:
         inq.put({"method": "GET", "url": url})
     while inq.qsize() > 0 or outq.qsize() > 0:
         resp = outq.get()
         if resp.status_code != 200:
+            logger.warning(
+                f"Request to {str(resp.url)} failed with code {resp.status_code}"
+                + f" and text {resp.text}"
+            )
             continue
-        html = resp.text
-        soup = bs4.BeautifulSoup(html, "html.parser")
+        page = WebPage(url=str(resp.url), html=resp.text)
+        soup = bs4.BeautifulSoup(resp.text, "html.parser")
         links = soup.find_all("a")
         for link in links:
             path = link.get("href")
             if path and path.startswith("/"):
                 path = urljoin(url, path)
-            if resp.url.netloc.decode("utf-8") == urlparse(path).netloc:
-                inq.put({"method": "GET", "url": path})
-        yield html
-    p.terminate()
+            # check conditions of skipping
+            if resp.url.netloc.decode("utf-8") != urlparse(path).netloc:
+                continue
+            if path in submitted_urls:
+                continue
+            # if there's no reason to skip, put new url to the queue
+            inq.put({"method": "GET", "url": path})
+            submitted_urls.add(path)
+        yield page
+    if p.is_alive():
+        p.terminate()
+    CRAWLING_PROCESSES.pop()
 
 
-def main():
-    logging.basicConfig()
-    logger.setLevel(logging.DEBUG)
-    start_urls = ["https://www.nhs.uk/"]
-    kwargs = {"rate_limit": 20}
-    it = crawl(start_urls, **kwargs)
-    for html in it:
-        print(f"HTML of length {len(html)}")
+def get_crawling_process():
+    return CRAWLING_PROCESSES[-1]

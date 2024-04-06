@@ -21,6 +21,7 @@ dependencies = [
     # store
     "psycopg>=3.1.18",
     "pgvector>=0.2.5",
+    "SQLAlchemy>=2.0.29",
 
     # crawling
     "beautifulsoup4>=4.12.3",
@@ -33,5 +34,9 @@ dependencies = [
 [tool.mypy]
 
 [[tool.mypy.overrides]]
-module = "transformers.*,sentence_transformers.*,faiss.*,datasets.*,pgvector.psycopg.*"
+module = "transformers.*,sentence_transformers.*,faiss.*,datasets.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pgvector.psycopg.*,pgvector.sqlalchemy.*"
 ignore_missing_imports = true

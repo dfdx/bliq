@@ -1,34 +1,13 @@
-import os
-from collections import OrderedDict
 from typing import List
 
-import numpy as np
-import psycopg
 from llama_index.core.schema import TextNode
-from pgvector.psycopg import register_vector
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
 from sentence_transformers import SentenceTransformer
-from tqdm import tqdm
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from kava.postgres import StoredTextNode, create_engine_from_env
 
 DEFAULT_EMBEDDER_MODEL_ID = "all-MiniLM-L6-v2"
-
-
-def getenv_or_raise(name: str):
-    value = os.getenv(name)
-    if not value:
-        raise ValueError(
-            f"Attemping to load connection info from environment, "
-            + f"but {name} variable is not set"
-        )
-    else:
-        return value
-
-
-def connection_string_from_env():
-    names = ("PGHOST", "PGDBNAME", "PGUSER", "PGPASSWORD")
-    host, dbname, user, password = [getenv_or_raise(name) for name in names]
-    return f"host={host} dbname={dbname} user={user} password={password}"
 
 
 class PGStore:
@@ -36,110 +15,48 @@ class PGStore:
     PostgreSQL-based vector store
     """
 
-    # map from TextNode fields to table columns
-    attr2col = OrderedDict(
-        {
-            "id_": "id",
-            "text": "text",
-            "embedding": "embedding",
-            "metadata": "metadata",
-            "start_char_idx": "start_char_idx",
-            "end_char_idx": "end_char_idx",
-        }
-    )
-
     def __init__(
         self,
-        table: str,
         embedder: SentenceTransformer | str = DEFAULT_EMBEDDER_MODEL_ID,
-        conn_info=None,
+        conn_str=None,
     ):
         if isinstance(embedder, str):
             embedder = SentenceTransformer(embedder)
         self.embedder = embedder or SentenceTransformer(DEFAULT_EMBEDDER_MODEL_ID)
         self.embedding_size = self.embedder.encode("hello").shape[0]
-        self.table = table
-        self.conn_info = conn_info or connection_string_from_env()
-        self.reconnect()
-
-    def reconnect(self):
-        self.conn = psycopg.connect(self.conn_info, row_factory=dict_row)
-        register_vector(self.conn)
-
-    def ensure_initialized(self):
-        self.conn.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {self.table} (
-                id UUID PRIMARY KEY,
-                text TEXT,
-                embedding VECTOR({self.embedding_size}),
-                metadata JSONB,
-                start_char_idx INT,
-                end_char_idx INT
-            )"""
-        )
-        self.conn.commit()
+        self.engine = create_engine(conn_str) if conn_str else create_engine_from_env()
 
     def add(self, nodes: List[TextNode]):
-        self.ensure_initialized()
         for node in nodes:
             if not node.embedding:
                 node.embedding = self.embedder.encode(node.text).tolist()
-        sql = f"""INSERT INTO {self.table}
-            (id, text, embedding, metadata, start_char_idx, end_char_idx)
-        VALUES
-            (%s, %s, %s, %s, %s, %s)
-        """
-        for node in nodes:
-            self.conn.execute(
-                sql,
-                (
-                    node.id_,
-                    node.text,
-                    node.embedding,
-                    Jsonb(node.metadata),
-                    node.start_char_idx,
-                    node.end_char_idx,
-                ),
-            )
-        self.conn.commit()
+        stored_nodes = [StoredTextNode.from_text_node(node) for node in nodes]
+        with Session(self.engine) as session:
+            session.add_all(stored_nodes)
+            session.commit()
 
-    def _find(self, embedding: np.ndarray, limit: int = 10):
-        self.ensure_initialized()
-        with self.conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT id, text, embedding, metadata, start_char_idx, end_char_idx FROM {self.table}
-                ORDER BY embedding <-> %s LIMIT {limit}
-                """,
-                (embedding,),
-            )
-            records = cur.fetchall()
-        nodes = []
-        for rec in records:
-            # note: fields don't map 1:1
-            node = TextNode(
-                id_=str(rec["id"]),
-                text=rec["text"],
-                embedding=rec["embedding"].tolist(),
-                extra_info=rec["metadata"],
-                start_char_idx=rec["start_char_idx"],
-                end_char_idx=rec["end_char_idx"],
-            )
-            nodes.append(node)
-        return nodes
-
-    def find(self, question: str, limit: int = 10):
-        embedding = self.embedder.encode(question)
-        return self._find(embedding, limit=limit)
+    def find(self, question_or_embedding: str | List, limit: int = 10):
+        if isinstance(question_or_embedding, str):
+            embedding = self.embedder.encode(question_or_embedding)
+        else:
+            embedding = question_or_embedding
+        with Session(self.engine) as session:
+            query = select(StoredTextNode)
+            query = query.order_by(StoredTextNode.embedding.cosine_distance(embedding))
+            query = query.limit(limit)
+            s_nodes = session.scalars(query).all()
+        return [s_node.to_text_node() for s_node in s_nodes]
 
 
 def main():
-    TEXT = """The 1876 association football match between the national teams representing Scotland and Wales was the first game played by the latter side. It took place on 25 March 1876 at Hamilton Crescent, Partick, the home ground of the West of Scotland Cricket Club. The match was also the first time that Scotland had played against a side other than England."""
-    embedder = DEFAULT_EMBEDDER_MODEL_ID
-    table = "medical_embeddings"
-    self = PGStore(table, embedder=embedder)
-    for node in self.find("When did it happen?"):
-        print(node.text)
+    self = PGStore()
+    texts = """Appalachian Spring is an American ballet created by the composer Aaron Copland and the choreographer Martha Graham (pictured), later arranged as an orchestral work. Copland composed the ballet for Graham upon a commission from Elizabeth Sprague Coolidge. Set in a 19th-century settlement in Pennsylvania, the ballet follows the Bride and the Husbandman as they get married and celebrate with the community. The original choreography was by Graham, with costumes by Edythe Gilfond and sets by Isamu Noguchi. The ballet was well-received at the 1944 premiere, earning Copland the Pulitzer Prize for Music during its 1945 United States tour. """.split(
+        ". "
+    )
+    nodes = [TextNode(text=text) for text in texts]
+    self.add(nodes)
 
-    nodes = [TextNode(text=piece) for piece in TEXT.split(".")]
+    question_or_embedding = "When does the ballet take place?"
+    limit = 3
+    nodes = self.find(question_or_embedding)
+    session = Session(self.engine)
