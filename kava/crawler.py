@@ -23,10 +23,11 @@ async def download_job_coro(
             logger.debug(f"Requesting {req.url}")
             try:
                 resp = await client.send(req)
+                resp.request = req  # request might have changed due to redirect
                 outq.put(resp)
             except Exception as e:
                 # return pseudo response
-                resp = httpx.Response(status_code=500, text=str(e))
+                resp = httpx.Response(request=req, status_code=500, text=str(e))
                 outq.put(resp)
             if rate_limit:
                 await asyncio.sleep(1 / rate_limit)
@@ -92,15 +93,17 @@ def crawl(start_urls: List[str], **kwargs):
     global CRAWLING_PROCESSES
     CRAWLING_PROCESSES.append((p, inq, outq))
     p.start()
+    allowed_domains = set([urlparse(url).netloc for url in start_urls])
     submitted_urls: set[str] = set([])
     for url in start_urls:
         inq.put({"method": "GET", "url": url})
+        submitted_urls.add(url)
     while inq.qsize() > 0 or outq.qsize() > 0:
         resp = outq.get()
         if resp.status_code != 200:
             logger.warning(
                 f"Request to {str(resp.url)} failed with code {resp.status_code}"
-                + f" and text {resp.text}"
+                + f" and text starting with {resp.text[:100]}"
             )
             continue
         page = WebPage(url=str(resp.url), html=resp.text)
@@ -111,7 +114,8 @@ def crawl(start_urls: List[str], **kwargs):
             if path and path.startswith("/"):
                 path = urljoin(url, path)
             # check conditions of skipping
-            if resp.url.netloc.decode("utf-8") != urlparse(path).netloc:
+            if urlparse(path).netloc not in allowed_domains:
+                # if resp.url.netloc.decode("utf-8") != urlparse(path).netloc:
                 continue
             if path in submitted_urls:
                 continue
